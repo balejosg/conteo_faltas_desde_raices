@@ -126,8 +126,201 @@ def escape_xml(text):
     text = text.replace("'", "&apos;")
     return text
 
-def crear_ods(hojas_datos, output_filename):
-    """Crear un archivo ODS con múltiples hojas"""
+def leer_ods_existente(filename):
+    """Lee un archivo ODS existente y extrae su estructura"""
+    from xml.etree import ElementTree as ET
+
+    if not Path(filename).exists():
+        return None
+
+    try:
+        hojas_existentes = {}
+
+        with zipfile.ZipFile(filename, 'r') as zf:
+            content_xml = zf.read('content.xml')
+            root = ET.fromstring(content_xml)
+
+            # Namespaces
+            ns = {
+                'office': 'urn:oasis:names:tc:opendocument:xmlns:office:1.0',
+                'table': 'urn:oasis:names:tc:opendocument:xmlns:table:1.0',
+                'text': 'urn:oasis:names:tc:opendocument:xmlns:text:1.0'
+            }
+
+            # Buscar todas las tablas (hojas)
+            tables = root.findall('.//table:table', ns)
+
+            for table in tables:
+                nombre_hoja = table.get('{%s}name' % ns['table'])
+                rows = table.findall('.//table:table-row', ns)
+
+                if not rows:
+                    continue
+
+                # Primera fila: cabeceras
+                header_row = rows[0]
+                cabeceras = []
+                for cell in header_row.findall('.//table:table-cell', ns):
+                    text_elem = cell.find('.//text:p', ns)
+                    if text_elem is not None and text_elem.text:
+                        cabeceras.append(text_elem.text)
+                    else:
+                        cabeceras.append("")
+
+                # Extraer períodos de las cabeceras
+                periodos = []
+                for cabecera in cabeceras:
+                    # Buscar patrón (DD/MM/YYYY - DD/MM/YYYY)
+                    match = re.search(r'\((\d{2}/\d{2}/\d{4}\s*-\s*\d{2}/\d{2}/\d{4})\)', cabecera)
+                    if match and match.group(1) not in periodos:
+                        periodos.append(match.group(1))
+
+                # Resto de filas: datos de alumnos
+                alumnos = {}
+                for row in rows[1:]:
+                    cells = row.findall('.//table:table-cell', ns)
+                    if not cells:
+                        continue
+
+                    # Primera celda: nombre del alumno
+                    nombre_cell = cells[0].find('.//text:p', ns)
+                    if nombre_cell is None or not nombre_cell.text:
+                        continue
+
+                    nombre_alumno = nombre_cell.text
+                    valores = []
+
+                    # Resto de celdas: valores
+                    for cell in cells[1:]:
+                        value = cell.get('{%s}value' % ns['office'])
+                        if value is not None:
+                            valores.append(value)
+                        else:
+                            text_elem = cell.find('.//text:p', ns)
+                            if text_elem is not None and text_elem.text:
+                                valores.append(text_elem.text)
+                            else:
+                                valores.append("")
+
+                    alumnos[nombre_alumno] = valores
+
+                hojas_existentes[nombre_hoja] = {
+                    'cabeceras': cabeceras,
+                    'periodos': periodos,
+                    'alumnos': alumnos
+                }
+
+        return hojas_existentes
+
+    except Exception as e:
+        print(f"⚠ Error al leer ODS existente: {e}")
+        return None
+
+def fusionar_datos_hoja(hoja_existente, periodo_nuevo, datos_nuevos):
+    """Fusiona datos nuevos con una hoja existente"""
+
+    # Si no existe hoja, crear estructura nueva
+    if hoja_existente is None:
+        cabeceras = [
+            'Alumno/a',
+            f'Justificadas ({periodo_nuevo})',
+            f'Injustificadas ({periodo_nuevo})',
+            f'Retrasos ({periodo_nuevo})',
+            'TOTAL'
+        ]
+        alumnos = {}
+        for nombre, fj, fi, r in datos_nuevos:
+            alumnos[nombre] = [fj, fi, r]
+
+        return {
+            'cabeceras': cabeceras,
+            'periodos': [periodo_nuevo],
+            'alumnos': alumnos
+        }
+
+    # Hoja existente: fusionar datos
+    cabeceras = list(hoja_existente['cabeceras'])
+    periodos = list(hoja_existente['periodos'])
+    alumnos = dict(hoja_existente['alumnos'])
+
+    # Verificar si el período ya existe
+    periodo_existe = periodo_nuevo in periodos
+
+    if periodo_existe:
+        # Sobrescribir: encontrar índices de las columnas de este período
+        idx_periodo = periodos.index(periodo_nuevo)
+        # Cada período tiene 3 columnas (Justificadas, Injustificadas, Retrasos)
+        # Columna 0 es Alumno/a, luego vienen 3 columnas por período
+        col_inicio = 1 + (idx_periodo * 3)  # Índice base 1 después de Alumno/a
+
+        # Actualizar valores de alumnos existentes y añadir nuevos
+        for nombre, fj, fi, r in datos_nuevos:
+            if nombre in alumnos:
+                # Actualizar valores existentes
+                valores = list(alumnos[nombre])
+                # Asegurarse de que hay suficientes elementos
+                while len(valores) < col_inicio + 2:
+                    valores.append("")
+                valores[col_inicio - 1] = fj
+                valores[col_inicio] = fi
+                valores[col_inicio + 1] = r
+                alumnos[nombre] = valores
+            else:
+                # Alumno nuevo: crear fila con valores vacíos excepto para este período
+                num_cols = len(periodos) * 3  # Sin contar TOTAL
+                valores = [""] * num_cols
+                valores[col_inicio - 1] = fj
+                valores[col_inicio] = fi
+                valores[col_inicio + 1] = r
+                alumnos[nombre] = valores
+    else:
+        # Añadir nuevo período: insertar 3 columnas antes de TOTAL
+        periodos.append(periodo_nuevo)
+
+        # Insertar cabeceras antes de TOTAL
+        if 'TOTAL' in cabeceras:
+            idx_total = cabeceras.index('TOTAL')
+        else:
+            idx_total = len(cabeceras)
+            cabeceras.append('TOTAL')
+
+        cabeceras.insert(idx_total, f'Justificadas ({periodo_nuevo})')
+        cabeceras.insert(idx_total + 1, f'Injustificadas ({periodo_nuevo})')
+        cabeceras.insert(idx_total + 2, f'Retrasos ({periodo_nuevo})')
+
+        # Actualizar valores de alumnos: añadir 3 columnas antes de TOTAL
+        for nombre in alumnos:
+            valores = list(alumnos[nombre])
+            # Insertar vacíos para el nuevo período
+            valores.extend(["", "", ""])
+            alumnos[nombre] = valores
+
+        # Añadir datos nuevos
+        col_inicio = len(periodos) * 3 - 2  # Índice para Justificadas del nuevo período
+        for nombre, fj, fi, r in datos_nuevos:
+            if nombre in alumnos:
+                valores = list(alumnos[nombre])
+                valores[col_inicio - 1] = fj
+                valores[col_inicio] = fi
+                valores[col_inicio + 1] = r
+                alumnos[nombre] = valores
+            else:
+                # Alumno nuevo
+                num_cols = len(periodos) * 3
+                valores = [""] * num_cols
+                valores[col_inicio - 1] = fj
+                valores[col_inicio] = fi
+                valores[col_inicio + 1] = r
+                alumnos[nombre] = valores
+
+    return {
+        'cabeceras': cabeceras,
+        'periodos': periodos,
+        'alumnos': alumnos
+    }
+
+def crear_ods(hojas_fusionadas, output_filename):
+    """Crear un archivo ODS con múltiples hojas (nueva versión con estructura fusionada)"""
 
     # Crear el contenido XML del archivo content.xml
     office_ns = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
@@ -146,7 +339,7 @@ def crear_ods(hojas_datos, output_filename):
     spreadsheet = SubElement(body, "{%s}spreadsheet" % office_ns)
 
     # Procesar cada hoja
-    for nombre_hoja, periodo, datos in hojas_datos:
+    for nombre_hoja, hoja_data in hojas_fusionadas.items():
         # Limitar nombre de la hoja a 31 caracteres
         sheet_name = nombre_hoja[:31]
 
@@ -154,44 +347,65 @@ def crear_ods(hojas_datos, output_filename):
         table = SubElement(spreadsheet, "{%s}table" % table_ns)
         table.set("{%s}name" % table_ns, escape_xml(sheet_name))
 
+        # Obtener estructura de la hoja
+        cabeceras = hoja_data['cabeceras']
+        alumnos = hoja_data['alumnos']
+
+        # Identificar columnas de Justificadas e Injustificadas para la fórmula TOTAL
+        cols_justificadas = []
+        cols_injustificadas = []
+        for idx, header in enumerate(cabeceras):
+            col_letter = chr(65 + idx)  # A=65 en ASCII (columna A es Alumno/a)
+            if 'Justificadas' in header:
+                cols_justificadas.append(col_letter)
+            elif 'Injustificadas' in header:
+                cols_injustificadas.append(col_letter)
+
         # Añadir fila de cabecera
         header_row = SubElement(table, "{%s}table-row" % table_ns)
-        headers = [
-            'Alumno/a',
-            f'Justificadas ({periodo})' if periodo else 'Justificadas',
-            f'Injustificadas ({periodo})' if periodo else 'Injustificadas',
-            f'Retrasos ({periodo})' if periodo else 'Retrasos',
-            'TOTAL'
-        ]
-        for header in headers:
+        for header in cabeceras:
             table_cell = SubElement(header_row, "{%s}table-cell" % table_ns)
             table_cell.set("{%s}value-type" % office_ns, "string")
             p = SubElement(table_cell, "{%s}p" % text_ns)
             p.text = escape_xml(header)
 
-        # Añadir las filas de datos
-        for row_num, row in enumerate(datos, start=2):  # Empieza en 2 (fila 1 es cabecera)
+        # Añadir las filas de datos de alumnos
+        for row_num, (nombre_alumno, valores) in enumerate(alumnos.items(), start=2):
             table_row = SubElement(table, "{%s}table-row" % table_ns)
-            for idx, cell_value in enumerate(row):
-                table_cell = SubElement(table_row, "{%s}table-cell" % table_ns)
 
-                # Primera columna (nombre) es texto, el resto son números
-                if idx == 0:
-                    table_cell.set("{%s}value-type" % office_ns, "string")
+            # Primera celda: nombre del alumno
+            name_cell = SubElement(table_row, "{%s}table-cell" % table_ns)
+            name_cell.set("{%s}value-type" % office_ns, "string")
+            p = SubElement(name_cell, "{%s}p" % text_ns)
+            p.text = escape_xml(nombre_alumno)
+
+            # Resto de celdas: valores numéricos (excepto TOTAL)
+            for cell_value in valores:
+                table_cell = SubElement(table_row, "{%s}table-cell" % table_ns)
+                if cell_value == "" or cell_value is None:
+                    # Celda vacía
                     p = SubElement(table_cell, "{%s}p" % text_ns)
-                    p.text = escape_xml(cell_value)
+                    p.text = ""
                 else:
-                    # Columnas numéricas (Justificadas, Injustificadas, Retrasos)
+                    # Valor numérico
                     table_cell.set("{%s}value-type" % office_ns, "float")
                     table_cell.set("{%s}value" % office_ns, str(cell_value))
                     p = SubElement(table_cell, "{%s}p" % text_ns)
                     p.text = str(cell_value)
 
-            # Añadir columna TOTAL con fórmula (suma de Justificadas + Injustificadas)
+            # Añadir columna TOTAL con fórmula (suma todas las Justificadas + todas las Injustificadas)
             total_cell = SubElement(table_row, "{%s}table-cell" % table_ns)
             total_cell.set("{%s}value-type" % office_ns, "float")
-            total_cell.set("{%s}formula" % table_ns, f"of:=[.B{row_num}]+[.C{row_num}]")
-            # No se calcula el valor, la fórmula lo hará automáticamente
+
+            # Construir fórmula: suma de todas las columnas Justificadas e Injustificadas
+            formula_parts = []
+            for col in cols_justificadas + cols_injustificadas:
+                formula_parts.append(f"[.{col}{row_num}]")
+
+            formula = f"of:={'+'.join(formula_parts)}" if formula_parts else "of:=0"
+            total_cell.set("{%s}formula" % table_ns, formula)
+
+            # No pre-calcular valor, la fórmula lo hará
             p = SubElement(total_cell, "{%s}p" % text_ns)
             p.text = ""
 
@@ -241,18 +455,36 @@ def main():
 
     print(f"Encontrados {len(pdf_files)} archivos PDF\n")
 
-    # Procesar cada PDF
-    hojas_datos = []
+    # Leer archivo ODS existente si existe
+    archivo_ods = directorio_actual / NOMBRE_SALIDA
+    hojas_existentes = leer_ods_existente(archivo_ods)
+
+    if hojas_existentes:
+        print(f"✓ Archivo existente encontrado: {NOMBRE_SALIDA}")
+        print(f"  - {len(hojas_existentes)} hojas existentes")
+        print(f"  - Se actualizarán con los nuevos datos\n")
+    else:
+        print(f"  - No se encontró archivo existente, se creará uno nuevo\n")
+        hojas_existentes = {}
+
+    # Procesar cada PDF y fusionar con datos existentes
+    hojas_fusionadas = dict(hojas_existentes)
     archivos_procesados = 0
 
     for pdf_path in pdf_files:
         nombre_materia, periodo, datos = procesar_pdf(pdf_path)
         if nombre_materia and periodo and datos:
-            hojas_datos.append((nombre_materia, periodo, datos))
+            # Buscar hoja existente por nombre
+            hoja_existente = hojas_fusionadas.get(nombre_materia, None)
+
+            # Fusionar datos
+            hoja_fusionada = fusionar_datos_hoja(hoja_existente, periodo, datos)
+            hojas_fusionadas[nombre_materia] = hoja_fusionada
+
             archivos_procesados += 1
         print()
 
-    if not hojas_datos:
+    if not hojas_fusionadas:
         print("⚠ No se pudo procesar ningún archivo")
         return
 
@@ -260,10 +492,10 @@ def main():
     print("=" * 70)
     print(f"Creando archivo ODS: {NOMBRE_SALIDA}")
     print("=" * 70)
-    crear_ods(hojas_datos, NOMBRE_SALIDA)
+    crear_ods(hojas_fusionadas, NOMBRE_SALIDA)
 
     print(f"\n✓ Archivo '{NOMBRE_SALIDA}' creado exitosamente!")
-    print(f"  - {len(hojas_datos)} hojas generadas")
+    print(f"  - {len(hojas_fusionadas)} hojas en total")
     print(f"  - {archivos_procesados}/{len(pdf_files)} archivos procesados")
     print(f"\nPuedes abrirlo con LibreOffice Calc, Excel u otro programa de hojas de cálculo.")
 

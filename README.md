@@ -18,6 +18,12 @@ El programa los lee todos y crea **un único archivo** llamado `faltas_consolida
 - Una pestaña llamada "Inglés" con los datos del tercer PDF
 - ... y así sucesivamente
 
+**🔄 Funcionamiento incremental:** Si ejecutas el programa varias veces con PDFs de diferentes períodos:
+- Si el archivo `faltas_consolidado.ods` ya existe, el programa lo actualizará
+- Si el período del PDF ya existe en el archivo, sobrescribirá los datos
+- Si es un período nuevo, añadirá 3 columnas nuevas (Justificadas, Injustificadas, Retrasos) para ese período
+- La columna TOTAL sumará automáticamente todas las faltas de todos los períodos
+
 Puedes abrir el archivo generado con **Excel**, **LibreOffice Calc** o **Google Sheets**.
 
 ---
@@ -174,6 +180,33 @@ Martínez Pérez, Juan                   1   0   0   1
 
 ---
 
+## 🔄 Uso incremental: Múltiples períodos
+
+El programa está diseñado para trabajar con múltiples períodos de forma acumulativa:
+
+### Primera ejecución
+Coloca los PDFs del primer período (ejemplo: septiembre-octubre) en la carpeta y ejecuta el programa. Se creará `faltas_consolidado.ods` con los datos de ese período.
+
+### Segunda ejecución (período nuevo)
+1. Coloca los PDFs del segundo período (ejemplo: noviembre-diciembre) en la carpeta
+2. Ejecuta el programa de nuevo
+3. El programa:
+   - Detectará el archivo existente
+   - Añadirá 3 columnas nuevas para el nuevo período en cada hoja
+   - Actualizará la fórmula TOTAL para sumar todos los períodos
+4. Ahora tendrás 6 columnas de datos + TOTAL (3 columnas × 2 períodos)
+
+### Segunda ejecución (mismo período, datos corregidos)
+Si ejecutas el programa con PDFs del mismo período que ya existe:
+- Los datos del período se **sobrescribirán** con los nuevos valores
+- Útil si hubo algún error en los PDFs originales y necesitas corregir
+
+### Alumnos nuevos o que se dan de baja
+- Si un alumno aparece en un período posterior, se añadirá al final de la lista
+- Si un alumno no aparece en un PDF, las celdas de ese período quedarán vacías para ese alumno
+
+---
+
 ## ❓ Problemas comunes y soluciones
 
 ### "No se encontraron archivos PDF"
@@ -208,14 +241,19 @@ Cada hoja del archivo ODS tendrá estas columnas:
 - **Justificadas (período)**: Faltas Justificadas con el período entre paréntesis (número)
 - **Injustificadas (período)**: Faltas Injustificadas con el período entre paréntesis (número)
 - **Retrasos (período)**: Retrasos con el período entre paréntesis (número)
-- **TOTAL**: Suma automática de Justificadas + Injustificadas (número con fórmula)
+- **TOTAL**: Suma automática de TODAS las Justificadas + TODAS las Injustificadas de todos los períodos (número con fórmula)
 
-**Ejemplo de cabeceras:**
+**Ejemplo con un solo período:**
 ```
 Alumno/a | Justificadas (10/09/2025 - 11/10/2025) | Injustificadas (10/09/2025 - 11/10/2025) | Retrasos (10/09/2025 - 11/10/2025) | TOTAL
 ```
 
-Las columnas numéricas funcionan como números reales, así que puedes hacer sumas, promedios y otros cálculos directamente en Excel o LibreOffice. La columna TOTAL se calcula automáticamente mediante una fórmula y se actualizará si modificas los valores de Justificadas o Injustificadas.
+**Ejemplo con múltiples períodos:**
+```
+Alumno/a | Justificadas (10/09 - 11/10) | Injustificadas (10/09 - 11/10) | Retrasos (10/09 - 11/10) | Justificadas (12/11 - 12/12) | Injustificadas (12/11 - 12/12) | Retrasos (12/11 - 12/12) | TOTAL
+```
+
+Las columnas numéricas funcionan como números reales, así que puedes hacer sumas, promedios y otros cálculos directamente en Excel o LibreOffice. La columna TOTAL se calcula automáticamente mediante una fórmula que suma todas las columnas de Justificadas e Injustificadas, y se actualizará si modificas cualquier valor.
 
 ---
 
