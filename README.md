@@ -166,6 +166,8 @@ Martínez Pérez, Juan                   1   0   0   1
 - Entre "Alumno/a" y "TOTAL" debe estar el nombre de la materia
 - Cada fila debe tener: Nombre del alumno + números
 
+**Nota:** El programa convertirá automáticamente las abreviaturas FJ, FI, R en los nombres completos "Justificadas", "Injustificadas" y "Retrasos" en el archivo generado, y añadirá una columna TOTAL que suma Justificadas + Injustificadas.
+
 ---
 
 ## ❓ Problemas comunes y soluciones
@@ -199,11 +201,12 @@ Martínez Pérez, Juan                   1   0   0   1
 Cada hoja del archivo ODS tendrá estas columnas:
 
 - **Alumno/a**: Nombre completo del estudiante
-- **FJ**: Faltas Justificadas (número)
-- **FI**: Faltas Injustificadas (número)
-- **R**: Retrasos (número)
+- **Justificadas**: Faltas Justificadas (número)
+- **Injustificadas**: Faltas Injustificadas (número)
+- **Retrasos**: Retrasos (número)
+- **TOTAL**: Suma automática de Justificadas + Injustificadas (número con fórmula)
 
-Las columnas numéricas funcionan como números reales, así que puedes hacer sumas, promedios y otros cálculos directamente en Excel o LibreOffice.
+Las columnas numéricas funcionan como números reales, así que puedes hacer sumas, promedios y otros cálculos directamente en Excel o LibreOffice. La columna TOTAL se calcula automáticamente y se actualizará si modificas los valores de Justificadas o Injustificadas.
 
 ---
 

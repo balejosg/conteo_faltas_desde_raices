@@ -138,14 +138,14 @@ def crear_ods(hojas_datos, output_filename):
 
         # Añadir fila de cabecera
         header_row = SubElement(table, "{%s}table-row" % table_ns)
-        for header in ['Alumno/a', 'FJ', 'FI', 'R']:
+        for header in ['Alumno/a', 'Justificadas', 'Injustificadas', 'Retrasos', 'TOTAL']:
             table_cell = SubElement(header_row, "{%s}table-cell" % table_ns)
             table_cell.set("{%s}value-type" % office_ns, "string")
             p = SubElement(table_cell, "{%s}p" % text_ns)
             p.text = escape_xml(header)
 
         # Añadir las filas de datos
-        for row in datos:
+        for row_num, row in enumerate(datos, start=2):  # Empieza en 2 (fila 1 es cabecera)
             table_row = SubElement(table, "{%s}table-row" % table_ns)
             for idx, cell_value in enumerate(row):
                 table_cell = SubElement(table_row, "{%s}table-cell" % table_ns)
@@ -156,11 +156,23 @@ def crear_ods(hojas_datos, output_filename):
                     p = SubElement(table_cell, "{%s}p" % text_ns)
                     p.text = escape_xml(cell_value)
                 else:
-                    # Columnas numéricas (FJ, FI, R)
+                    # Columnas numéricas (Justificadas, Injustificadas, Retrasos)
                     table_cell.set("{%s}value-type" % office_ns, "float")
                     table_cell.set("{%s}value" % office_ns, str(cell_value))
                     p = SubElement(table_cell, "{%s}p" % text_ns)
                     p.text = str(cell_value)
+
+            # Añadir columna TOTAL con fórmula (suma de Justificadas + Injustificadas)
+            total_cell = SubElement(table_row, "{%s}table-cell" % table_ns)
+            total_cell.set("{%s}value-type" % office_ns, "float")
+            total_cell.set("{%s}formula" % table_ns, f"of:=[.B{row_num}]+[.C{row_num}]")
+            # Calcular el valor para mostrarlo
+            justificadas = int(row[1])
+            injustificadas = int(row[2])
+            total_value = justificadas + injustificadas
+            total_cell.set("{%s}value" % office_ns, str(total_value))
+            p = SubElement(total_cell, "{%s}p" % text_ns)
+            p.text = str(total_value)
 
     # Convertir a string XML
     xml_str = tostring(root, encoding='utf-8')
