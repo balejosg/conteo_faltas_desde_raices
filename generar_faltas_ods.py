@@ -114,6 +114,12 @@ def procesar_pdf(pdf_path):
     print(f"  ✓ Materia: '{nombre_materia}' - Período: '{periodo}' ({len(datos)} alumnos)")
     return nombre_materia, periodo, datos
 
+def normalizar_nombre_hoja(nombre):
+    """Normaliza el nombre de una hoja truncándolo a 31 caracteres (límite de ODS)"""
+    if nombre is None:
+        return ""
+    return str(nombre)[:31]
+
 def escape_xml(text):
     """Escapar caracteres especiales XML"""
     if text is None:
@@ -151,19 +157,21 @@ def leer_ods_existente(filename):
             tables = root.findall('.//table:table', ns)
 
             for table in tables:
-                nombre_hoja = table.get('{%s}name' % ns['table'])
+                nombre_hoja = normalizar_nombre_hoja(table.get('{%s}name' % ns['table']))
                 rows = table.findall('.//table:table-row', ns)
 
                 if not rows:
                     continue
 
-                # Primera fila: cabeceras
+                # Primera fila: cabeceras (excluyendo columnas TOTAL)
                 header_row = rows[0]
                 cabeceras = []
                 for cell in header_row.findall('.//table:table-cell', ns):
                     text_elem = cell.find('.//text:p', ns)
                     if text_elem is not None and text_elem.text:
-                        cabeceras.append(text_elem.text)
+                        # Filtrar columnas TOTAL - serán regeneradas automáticamente
+                        if 'TOTAL' not in text_elem.text:
+                            cabeceras.append(text_elem.text)
                     else:
                         cabeceras.append("")
 
@@ -190,21 +198,25 @@ def leer_ods_existente(filename):
                     nombre_alumno = nombre_cell.text
                     valores = []
 
-                    # Resto de celdas: valores (excluyendo columnas TOTAL)
-                    for idx, cell in enumerate(cells[1:], start=1):
-                        # Saltar columnas TOTAL
-                        if idx < len(cabeceras) and 'TOTAL' in cabeceras[idx]:
-                            continue
+                    # Resto de celdas: leer solo las que corresponden a cabeceras (sin TOTAL)
+                    # Las cabeceras ya tienen filtradas las columnas TOTAL
+                    # Entonces solo leemos len(cabeceras)-1 celdas (excluyendo la primera que es el nombre)
+                    num_celdas_a_leer = len(cabeceras) - 1  # -1 porque cabeceras incluye "Alumno/a"
 
-                        value = cell.get('{%s}value' % ns['office'])
-                        if value is not None:
-                            valores.append(value)
-                        else:
-                            text_elem = cell.find('.//text:p', ns)
-                            if text_elem is not None and text_elem.text:
-                                valores.append(text_elem.text)
+                    for idx in range(num_celdas_a_leer):
+                        if idx + 1 < len(cells):
+                            cell = cells[idx + 1]  # +1 para saltar la celda del nombre
+                            value = cell.get('{%s}value' % ns['office'])
+                            if value is not None:
+                                valores.append(value)
                             else:
-                                valores.append("")
+                                text_elem = cell.find('.//text:p', ns)
+                                if text_elem is not None and text_elem.text:
+                                    valores.append(text_elem.text)
+                                else:
+                                    valores.append("")
+                        else:
+                            valores.append("")
 
                     alumnos[nombre_alumno] = valores
 
@@ -229,9 +241,8 @@ def fusionar_datos_hoja(hoja_existente, periodo_nuevo, datos_nuevos):
             'Alumno/a',
             f'Justificadas ({periodo_nuevo})',
             f'Injustificadas ({periodo_nuevo})',
-            f'Retrasos ({periodo_nuevo})',
-            'TOTAL Justificadas y Injustificadas',
-            'TOTAL Retrasos'
+            f'Retrasos ({periodo_nuevo})'
+            # Las columnas TOTAL se añaden automáticamente en crear_ods()
         ]
         alumnos = {}
         for nombre, fj, fi, r in datos_nuevos:
@@ -302,9 +313,7 @@ def fusionar_datos_hoja(hoja_existente, periodo_nuevo, datos_nuevos):
         for p in periodos:
             nuevas_cabeceras.append(f'Retrasos ({p})')
 
-        # Añadir columnas TOTAL
-        nuevas_cabeceras.append('TOTAL Justificadas y Injustificadas')
-        nuevas_cabeceras.append('TOTAL Retrasos')
+        # Las columnas TOTAL se añaden automáticamente en crear_ods()
 
         cabeceras = nuevas_cabeceras
 
@@ -394,8 +403,8 @@ def crear_ods(hojas_fusionadas, output_filename):
 
     # Procesar cada hoja
     for nombre_hoja, hoja_data in hojas_fusionadas.items():
-        # Limitar nombre de la hoja a 31 caracteres
-        sheet_name = nombre_hoja[:31]
+        # El nombre ya debería estar normalizado, pero por seguridad lo verificamos
+        sheet_name = normalizar_nombre_hoja(nombre_hoja)
 
         # Crear la tabla (hoja)
         table = SubElement(spreadsheet, "{%s}table" % table_ns)
@@ -421,13 +430,24 @@ def crear_ods(hojas_fusionadas, output_filename):
             elif 'Retrasos' in header:
                 cols_retrasos.append(col_letter)
 
-        # Añadir fila de cabecera
+        # Añadir fila de cabecera (incluyendo columnas TOTAL)
         header_row = SubElement(table, "{%s}table-row" % table_ns)
         for header in cabeceras:
             table_cell = SubElement(header_row, "{%s}table-cell" % table_ns)
             table_cell.set("{%s}value-type" % office_ns, "string")
             p = SubElement(table_cell, "{%s}p" % text_ns)
             p.text = escape_xml(header)
+
+        # Añadir cabeceras TOTAL
+        total_ji_header = SubElement(header_row, "{%s}table-cell" % table_ns)
+        total_ji_header.set("{%s}value-type" % office_ns, "string")
+        p = SubElement(total_ji_header, "{%s}p" % text_ns)
+        p.text = "TOTAL Justificadas y Injustificadas"
+
+        total_r_header = SubElement(header_row, "{%s}table-cell" % table_ns)
+        total_r_header.set("{%s}value-type" % office_ns, "string")
+        p = SubElement(total_r_header, "{%s}p" % text_ns)
+        p.text = "TOTAL Retrasos"
 
         # Añadir las filas de datos de alumnos
         for row_num, (nombre_alumno, valores) in enumerate(alumnos.items(), start=2):
@@ -460,14 +480,31 @@ def crear_ods(hojas_fusionadas, output_filename):
             # Construir fórmula: suma de todas las Just + todas las Inj
             formula_ji_parts = []
             for col in cols_justificadas + cols_injustificadas:
-                formula_ji_parts.append(f"[.{col}{row_num}]")
+                formula_ji_parts.append(f"{col}{row_num}")
 
-            formula_ji = f"of:={'+'.join(formula_ji_parts)}" if formula_ji_parts else "of:=0"
+            formula_ji = f"={'+'.join(formula_ji_parts)}" if formula_ji_parts else "=0"
             total_ji_cell.set("{%s}formula" % table_ns, formula_ji)
 
-            # No pre-calcular valor, la fórmula lo hará
+            # Calcular el valor inicial de la fórmula
+            total_ji_value = 0
+            for i, valor in enumerate(valores):
+                if i < len(cols_justificadas):
+                    # Es una columna Justificada
+                    try:
+                        total_ji_value += float(valor) if valor != "" else 0
+                    except:
+                        pass
+                elif i < len(cols_justificadas) + len(cols_injustificadas):
+                    # Es una columna Injustificada
+                    try:
+                        total_ji_value += float(valor) if valor != "" else 0
+                    except:
+                        pass
+
+            # Establecer el valor calculado
+            total_ji_cell.set("{%s}value" % office_ns, str(total_ji_value))
             p = SubElement(total_ji_cell, "{%s}p" % text_ns)
-            p.text = ""
+            p.text = str(int(total_ji_value)) if total_ji_value == int(total_ji_value) else str(total_ji_value)
 
             # Añadir columna TOTAL Retrasos
             total_r_cell = SubElement(table_row, "{%s}table-cell" % table_ns)
@@ -476,14 +513,26 @@ def crear_ods(hojas_fusionadas, output_filename):
             # Construir fórmula: suma de todos los Retrasos
             formula_r_parts = []
             for col in cols_retrasos:
-                formula_r_parts.append(f"[.{col}{row_num}]")
+                formula_r_parts.append(f"{col}{row_num}")
 
-            formula_r = f"of:={'+'.join(formula_r_parts)}" if formula_r_parts else "of:=0"
+            formula_r = f"={'+'.join(formula_r_parts)}" if formula_r_parts else "=0"
             total_r_cell.set("{%s}formula" % table_ns, formula_r)
 
-            # No pre-calcular valor, la fórmula lo hará
+            # Calcular el valor inicial de la fórmula
+            total_r_value = 0
+            inicio_retrasos = len(cols_justificadas) + len(cols_injustificadas)
+            for i, valor in enumerate(valores):
+                if i >= inicio_retrasos:
+                    # Es una columna Retrasos
+                    try:
+                        total_r_value += float(valor) if valor != "" else 0
+                    except:
+                        pass
+
+            # Establecer el valor calculado
+            total_r_cell.set("{%s}value" % office_ns, str(total_r_value))
             p = SubElement(total_r_cell, "{%s}p" % text_ns)
-            p.text = ""
+            p.text = str(int(total_r_value)) if total_r_value == int(total_r_value) else str(total_r_value)
 
     # Convertir a string XML
     xml_str = tostring(root, encoding='utf-8')
@@ -550,12 +599,15 @@ def main():
     for pdf_path in pdf_files:
         nombre_materia, periodo, datos = procesar_pdf(pdf_path)
         if nombre_materia and periodo and datos:
-            # Buscar hoja existente por nombre
-            hoja_existente = hojas_fusionadas.get(nombre_materia, None)
+            # Normalizar nombre de hoja (truncar a 31 caracteres)
+            nombre_hoja_normalizado = normalizar_nombre_hoja(nombre_materia)
+
+            # Buscar hoja existente por nombre normalizado
+            hoja_existente = hojas_fusionadas.get(nombre_hoja_normalizado, None)
 
             # Fusionar datos
             hoja_fusionada = fusionar_datos_hoja(hoja_existente, periodo, datos)
-            hojas_fusionadas[nombre_materia] = hoja_fusionada
+            hojas_fusionadas[nombre_hoja_normalizado] = hoja_fusionada
 
             archivos_procesados += 1
         print()
