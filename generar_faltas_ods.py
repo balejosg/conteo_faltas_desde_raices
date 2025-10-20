@@ -44,6 +44,18 @@ def extraer_nombre_materia(texto):
 
     return None
 
+def extraer_periodo(texto):
+    """Extrae el período (fechas) del documento PDF"""
+    lineas = texto.split('\n')
+
+    for linea in lineas:
+        # Buscar el patrón "Periodo: (DD/MM/YYYY - DD/MM/YYYY)"
+        match = re.search(r'Periodo:\s*\((\d{2}/\d{2}/\d{4}\s*-\s*\d{2}/\d{2}/\d{4})\)', linea)
+        if match:
+            return match.group(1).strip()
+
+    return None
+
 def parsear_tabla(texto):
     """Parsea el texto extraído para obtener los datos de la tabla"""
     lineas = texto.split('\n')
@@ -72,29 +84,35 @@ def parsear_tabla(texto):
     return datos
 
 def procesar_pdf(pdf_path):
-    """Procesa un PDF y devuelve el nombre de la materia y los datos"""
+    """Procesa un PDF y devuelve el nombre de la materia, el período y los datos"""
     print(f"Procesando: {pdf_path.name}")
 
     # Extraer texto del PDF
     texto = extraer_texto_pdf(pdf_path)
     if not texto:
-        return None, None
+        return None, None, None
 
     # Extraer nombre de la materia
     nombre_materia = extraer_nombre_materia(texto)
     if not nombre_materia:
         print(f"  ⚠ No se pudo encontrar el nombre de la materia")
-        return None, None
+        return None, None, None
+
+    # Extraer período
+    periodo = extraer_periodo(texto)
+    if not periodo:
+        print(f"  ⚠ No se pudo encontrar el período")
+        return None, None, None
 
     # Parsear la tabla
     datos = parsear_tabla(texto)
 
     if not datos:
         print(f"  ⚠ No se encontraron datos")
-        return None, None
+        return None, None, None
 
-    print(f"  ✓ Materia: '{nombre_materia}' ({len(datos)} alumnos)")
-    return nombre_materia, datos
+    print(f"  ✓ Materia: '{nombre_materia}' - Período: '{periodo}' ({len(datos)} alumnos)")
+    return nombre_materia, periodo, datos
 
 def escape_xml(text):
     """Escapar caracteres especiales XML"""
@@ -128,7 +146,7 @@ def crear_ods(hojas_datos, output_filename):
     spreadsheet = SubElement(body, "{%s}spreadsheet" % office_ns)
 
     # Procesar cada hoja
-    for nombre_hoja, datos in hojas_datos:
+    for nombre_hoja, periodo, datos in hojas_datos:
         # Limitar nombre de la hoja a 31 caracteres
         sheet_name = nombre_hoja[:31]
 
@@ -138,7 +156,14 @@ def crear_ods(hojas_datos, output_filename):
 
         # Añadir fila de cabecera
         header_row = SubElement(table, "{%s}table-row" % table_ns)
-        for header in ['Alumno/a', 'Justificadas', 'Injustificadas', 'Retrasos', 'TOTAL']:
+        headers = [
+            'Alumno/a',
+            f'Justificadas ({periodo})' if periodo else 'Justificadas',
+            f'Injustificadas ({periodo})' if periodo else 'Injustificadas',
+            f'Retrasos ({periodo})' if periodo else 'Retrasos',
+            'TOTAL'
+        ]
+        for header in headers:
             table_cell = SubElement(header_row, "{%s}table-cell" % table_ns)
             table_cell.set("{%s}value-type" % office_ns, "string")
             p = SubElement(table_cell, "{%s}p" % text_ns)
@@ -166,13 +191,9 @@ def crear_ods(hojas_datos, output_filename):
             total_cell = SubElement(table_row, "{%s}table-cell" % table_ns)
             total_cell.set("{%s}value-type" % office_ns, "float")
             total_cell.set("{%s}formula" % table_ns, f"of:=[.B{row_num}]+[.C{row_num}]")
-            # Calcular el valor para mostrarlo
-            justificadas = int(row[1])
-            injustificadas = int(row[2])
-            total_value = justificadas + injustificadas
-            total_cell.set("{%s}value" % office_ns, str(total_value))
+            # No se calcula el valor, la fórmula lo hará automáticamente
             p = SubElement(total_cell, "{%s}p" % text_ns)
-            p.text = str(total_value)
+            p.text = ""
 
     # Convertir a string XML
     xml_str = tostring(root, encoding='utf-8')
@@ -225,9 +246,9 @@ def main():
     archivos_procesados = 0
 
     for pdf_path in pdf_files:
-        nombre_materia, datos = procesar_pdf(pdf_path)
-        if nombre_materia and datos:
-            hojas_datos.append((nombre_materia, datos))
+        nombre_materia, periodo, datos = procesar_pdf(pdf_path)
+        if nombre_materia and periodo and datos:
+            hojas_datos.append((nombre_materia, periodo, datos))
             archivos_procesados += 1
         print()
 

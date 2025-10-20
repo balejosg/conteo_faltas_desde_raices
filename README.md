@@ -164,9 +164,13 @@ Martínez Pérez, Juan                   1   0   0   1
 - Debe tener una tabla con columnas
 - La cabecera debe contener "Alumno/a" y "TOTAL"
 - Entre "Alumno/a" y "TOTAL" debe estar el nombre de la materia
+- El PDF debe incluir una línea con "Periodo: (DD/MM/YYYY - DD/MM/YYYY)"
 - Cada fila debe tener: Nombre del alumno + números
 
-**Nota:** El programa convertirá automáticamente las abreviaturas FJ, FI, R en los nombres completos "Justificadas", "Injustificadas" y "Retrasos" en el archivo generado, y añadirá una columna TOTAL que suma Justificadas + Injustificadas.
+**Nota:** El programa:
+- Extrae automáticamente el período del PDF y lo añade a las columnas
+- Convierte las abreviaturas FJ, FI, R en "Justificadas", "Injustificadas" y "Retrasos"
+- Añade una columna TOTAL con fórmula que suma Justificadas + Injustificadas
 
 ---
 
@@ -201,12 +205,17 @@ Martínez Pérez, Juan                   1   0   0   1
 Cada hoja del archivo ODS tendrá estas columnas:
 
 - **Alumno/a**: Nombre completo del estudiante
-- **Justificadas**: Faltas Justificadas (número)
-- **Injustificadas**: Faltas Injustificadas (número)
-- **Retrasos**: Retrasos (número)
+- **Justificadas (período)**: Faltas Justificadas con el período entre paréntesis (número)
+- **Injustificadas (período)**: Faltas Injustificadas con el período entre paréntesis (número)
+- **Retrasos (período)**: Retrasos con el período entre paréntesis (número)
 - **TOTAL**: Suma automática de Justificadas + Injustificadas (número con fórmula)
 
-Las columnas numéricas funcionan como números reales, así que puedes hacer sumas, promedios y otros cálculos directamente en Excel o LibreOffice. La columna TOTAL se calcula automáticamente y se actualizará si modificas los valores de Justificadas o Injustificadas.
+**Ejemplo de cabeceras:**
+```
+Alumno/a | Justificadas (10/09/2025 - 11/10/2025) | Injustificadas (10/09/2025 - 11/10/2025) | Retrasos (10/09/2025 - 11/10/2025) | TOTAL
+```
+
+Las columnas numéricas funcionan como números reales, así que puedes hacer sumas, promedios y otros cálculos directamente en Excel o LibreOffice. La columna TOTAL se calcula automáticamente mediante una fórmula y se actualizará si modificas los valores de Justificadas o Injustificadas.
 
 ---
 
