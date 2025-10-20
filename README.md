@@ -218,7 +218,7 @@ Si tienes problemas:
 
 ## 👨‍💻 Autor
 
-**Bruno Alejos García**
+**Bruno Alejos Gómez**
 - GitHub: [@balejosg](https://github.com/balejosg)
 
 ---
