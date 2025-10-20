@@ -22,7 +22,8 @@ El programa los lee todos y crea **un único archivo** llamado `faltas_consolida
 - Si el archivo `faltas_consolidado.ods` ya existe, el programa lo actualizará
 - Si el período del PDF ya existe en el archivo, sobrescribirá los datos
 - Si es un período nuevo, añadirá 3 columnas nuevas (Justificadas, Injustificadas, Retrasos) para ese período
-- La columna TOTAL sumará automáticamente todas las faltas de todos los períodos
+- Las columnas se reorganizarán automáticamente agrupadas por tipo (todas las Justificadas juntas, etc.)
+- Las dos columnas TOTAL se actualizarán automáticamente: una suma Justificadas + Injustificadas, otra suma solo Retrasos
 
 Puedes abrir el archivo generado con **Excel**, **LibreOffice Calc** o **Google Sheets**.
 
@@ -176,7 +177,8 @@ Martínez Pérez, Juan                   1   0   0   1
 **Nota:** El programa:
 - Extrae automáticamente el período del PDF y lo añade a las columnas
 - Convierte las abreviaturas FJ, FI, R en "Justificadas", "Injustificadas" y "Retrasos"
-- Añade una columna TOTAL con fórmula que suma Justificadas + Injustificadas
+- Organiza las columnas agrupadas por tipo (todas las Justificadas juntas, todas las Injustificadas juntas, todos los Retrasos juntos)
+- Añade dos columnas TOTAL con fórmulas: una que suma Justificadas + Injustificadas, otra que suma solo Retrasos
 
 ---
 
@@ -192,9 +194,10 @@ Coloca los PDFs del primer período (ejemplo: septiembre-octubre) en la carpeta 
 2. Ejecuta el programa de nuevo
 3. El programa:
    - Detectará el archivo existente
-   - Añadirá 3 columnas nuevas para el nuevo período en cada hoja
-   - Actualizará la fórmula TOTAL para sumar todos los períodos
-4. Ahora tendrás 6 columnas de datos + TOTAL (3 columnas × 2 períodos)
+   - Añadirá 3 columnas nuevas para el nuevo período en cada hoja (una Justificadas, una Injustificadas, una Retrasos)
+   - Las columnas se reorganizarán automáticamente agrupadas por tipo
+   - Actualizará las fórmulas de los dos TOTAL para sumar todos los períodos
+4. Ahora tendrás 6 columnas de datos + 2 TOTAL (3 columnas × 2 períodos + 2 totales)
 
 ### Segunda ejecución (mismo período, datos corregidos)
 Si ejecutas el programa con PDFs del mismo período que ya existe:
@@ -235,25 +238,30 @@ Si ejecutas el programa con PDFs del mismo período que ya existe:
 
 ## 📊 ¿Qué columnas tiene el archivo generado?
 
-Cada hoja del archivo ODS tendrá estas columnas:
+Cada hoja del archivo ODS tendrá estas columnas organizadas **por tipo de falta**:
 
 - **Alumno/a**: Nombre completo del estudiante
-- **Justificadas (período)**: Faltas Justificadas con el período entre paréntesis (número)
-- **Injustificadas (período)**: Faltas Injustificadas con el período entre paréntesis (número)
-- **Retrasos (período)**: Retrasos con el período entre paréntesis (número)
-- **TOTAL**: Suma automática de TODAS las Justificadas + TODAS las Injustificadas de todos los períodos (número con fórmula)
+- **Justificadas (período)**: Una columna por cada período con las faltas justificadas (número)
+- **Injustificadas (período)**: Una columna por cada período con las faltas injustificadas (número)
+- **Retrasos (período)**: Una columna por cada período con los retrasos (número)
+- **TOTAL Justificadas y Injustificadas**: Suma automática de TODAS las Justificadas + TODAS las Injustificadas de todos los períodos (fórmula)
+- **TOTAL Retrasos**: Suma automática de TODOS los Retrasos de todos los períodos (fórmula)
 
 **Ejemplo con un solo período:**
 ```
-Alumno/a | Justificadas (10/09/2025 - 11/10/2025) | Injustificadas (10/09/2025 - 11/10/2025) | Retrasos (10/09/2025 - 11/10/2025) | TOTAL
+Alumno/a | Justificadas (10/09/2025 - 11/09/2025) | Injustificadas (10/09/2025 - 11/09/2025) | Retrasos (10/09/2025 - 11/09/2025) | TOTAL Justificadas y Injustificadas | TOTAL Retrasos
 ```
 
-**Ejemplo con múltiples períodos:**
+**Ejemplo con múltiples períodos (columnas agrupadas por tipo):**
 ```
-Alumno/a | Justificadas (10/09 - 11/10) | Injustificadas (10/09 - 11/10) | Retrasos (10/09 - 11/10) | Justificadas (12/11 - 12/12) | Injustificadas (12/11 - 12/12) | Retrasos (12/11 - 12/12) | TOTAL
+Alumno/a | Justificadas (10/09 - 11/09) | Justificadas (12/11 - 12/12) | Injustificadas (10/09 - 11/09) | Injustificadas (12/11 - 12/12) | Retrasos (10/09 - 11/09) | Retrasos (12/11 - 12/12) | TOTAL Justificadas y Injustificadas | TOTAL Retrasos
 ```
 
-Las columnas numéricas funcionan como números reales, así que puedes hacer sumas, promedios y otros cálculos directamente en Excel o LibreOffice. La columna TOTAL se calcula automáticamente mediante una fórmula que suma todas las columnas de Justificadas e Injustificadas, y se actualizará si modificas cualquier valor.
+**Ventajas de esta organización:**
+- **Fácil comparación entre períodos**: Todas las faltas justificadas están juntas, todas las injustificadas juntas, etc.
+- **Dos totales separados**: El TOTAL de Retrasos se mantiene separado del TOTAL de Justificadas e Injustificadas
+- **Columnas numéricas**: Funcionan como números reales, así que puedes hacer sumas, promedios y otros cálculos directamente en Excel o LibreOffice
+- **Fórmulas automáticas**: Los totales se calculan mediante fórmulas y se actualizan automáticamente si modificas cualquier valor
 
 ---
 

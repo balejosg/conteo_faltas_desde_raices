@@ -190,8 +190,12 @@ def leer_ods_existente(filename):
                     nombre_alumno = nombre_cell.text
                     valores = []
 
-                    # Resto de celdas: valores
-                    for cell in cells[1:]:
+                    # Resto de celdas: valores (excluyendo columnas TOTAL)
+                    for idx, cell in enumerate(cells[1:], start=1):
+                        # Saltar columnas TOTAL
+                        if idx < len(cabeceras) and 'TOTAL' in cabeceras[idx]:
+                            continue
+
                         value = cell.get('{%s}value' % ns['office'])
                         if value is not None:
                             valores.append(value)
@@ -217,7 +221,7 @@ def leer_ods_existente(filename):
         return None
 
 def fusionar_datos_hoja(hoja_existente, periodo_nuevo, datos_nuevos):
-    """Fusiona datos nuevos con una hoja existente"""
+    """Fusiona datos nuevos con una hoja existente - AGRUPADO POR TIPO"""
 
     # Si no existe hoja, crear estructura nueva
     if hoja_existente is None:
@@ -226,10 +230,12 @@ def fusionar_datos_hoja(hoja_existente, periodo_nuevo, datos_nuevos):
             f'Justificadas ({periodo_nuevo})',
             f'Injustificadas ({periodo_nuevo})',
             f'Retrasos ({periodo_nuevo})',
-            'TOTAL'
+            'TOTAL Justificadas y Injustificadas',
+            'TOTAL Retrasos'
         ]
         alumnos = {}
         for nombre, fj, fi, r in datos_nuevos:
+            # Estructura: [just(p1), inj(p1), ret(p1)]
             alumnos[nombre] = [fj, fi, r]
 
         return {
@@ -245,72 +251,120 @@ def fusionar_datos_hoja(hoja_existente, periodo_nuevo, datos_nuevos):
 
     # Verificar si el período ya existe
     periodo_existe = periodo_nuevo in periodos
+    num_periodos = len(periodos)
 
     if periodo_existe:
-        # Sobrescribir: encontrar índices de las columnas de este período
+        # Sobrescribir: encontrar posiciones de este período
         idx_periodo = periodos.index(periodo_nuevo)
-        # Cada período tiene 3 columnas (Justificadas, Injustificadas, Retrasos)
-        # Columna 0 es Alumno/a, luego vienen 3 columnas por período
-        col_inicio = 1 + (idx_periodo * 3)  # Índice base 1 después de Alumno/a
 
-        # Actualizar valores de alumnos existentes y añadir nuevos
+        # Posiciones en estructura agrupada por tipo:
+        # Just: índices 0 hasta num_periodos-1
+        # Inj: índices num_periodos hasta 2*num_periodos-1
+        # Ret: índices 2*num_periodos hasta 3*num_periodos-1
+        pos_just = idx_periodo
+        pos_inj = num_periodos + idx_periodo
+        pos_ret = 2 * num_periodos + idx_periodo
+
+        # Actualizar/añadir alumnos
         for nombre, fj, fi, r in datos_nuevos:
             if nombre in alumnos:
-                # Actualizar valores existentes
                 valores = list(alumnos[nombre])
-                # Asegurarse de que hay suficientes elementos
-                while len(valores) < col_inicio + 2:
+                while len(valores) < 3 * num_periodos:
                     valores.append("")
-                valores[col_inicio - 1] = fj
-                valores[col_inicio] = fi
-                valores[col_inicio + 1] = r
-                alumnos[nombre] = valores
-            else:
-                # Alumno nuevo: crear fila con valores vacíos excepto para este período
-                num_cols = len(periodos) * 3  # Sin contar TOTAL
-                valores = [""] * num_cols
-                valores[col_inicio - 1] = fj
-                valores[col_inicio] = fi
-                valores[col_inicio + 1] = r
-                alumnos[nombre] = valores
-    else:
-        # Añadir nuevo período: insertar 3 columnas antes de TOTAL
-        periodos.append(periodo_nuevo)
-
-        # Insertar cabeceras antes de TOTAL
-        if 'TOTAL' in cabeceras:
-            idx_total = cabeceras.index('TOTAL')
-        else:
-            idx_total = len(cabeceras)
-            cabeceras.append('TOTAL')
-
-        cabeceras.insert(idx_total, f'Justificadas ({periodo_nuevo})')
-        cabeceras.insert(idx_total + 1, f'Injustificadas ({periodo_nuevo})')
-        cabeceras.insert(idx_total + 2, f'Retrasos ({periodo_nuevo})')
-
-        # Actualizar valores de alumnos: añadir 3 columnas antes de TOTAL
-        for nombre in alumnos:
-            valores = list(alumnos[nombre])
-            # Insertar vacíos para el nuevo período
-            valores.extend(["", "", ""])
-            alumnos[nombre] = valores
-
-        # Añadir datos nuevos
-        col_inicio = len(periodos) * 3 - 2  # Índice para Justificadas del nuevo período
-        for nombre, fj, fi, r in datos_nuevos:
-            if nombre in alumnos:
-                valores = list(alumnos[nombre])
-                valores[col_inicio - 1] = fj
-                valores[col_inicio] = fi
-                valores[col_inicio + 1] = r
+                valores[pos_just] = fj
+                valores[pos_inj] = fi
+                valores[pos_ret] = r
                 alumnos[nombre] = valores
             else:
                 # Alumno nuevo
-                num_cols = len(periodos) * 3
-                valores = [""] * num_cols
-                valores[col_inicio - 1] = fj
-                valores[col_inicio] = fi
-                valores[col_inicio + 1] = r
+                valores = [""] * (3 * num_periodos)
+                valores[pos_just] = fj
+                valores[pos_inj] = fi
+                valores[pos_ret] = r
+                alumnos[nombre] = valores
+    else:
+        # Añadir nuevo período
+        periodos.append(periodo_nuevo)
+        num_periodos_nuevo = len(periodos)
+
+        # Construir nuevas cabeceras agrupadas por tipo
+        nuevas_cabeceras = ['Alumno/a']
+
+        # Añadir todas las Justificadas
+        for p in periodos:
+            nuevas_cabeceras.append(f'Justificadas ({p})')
+
+        # Añadir todas las Injustificadas
+        for p in periodos:
+            nuevas_cabeceras.append(f'Injustificadas ({p})')
+
+        # Añadir todos los Retrasos
+        for p in periodos:
+            nuevas_cabeceras.append(f'Retrasos ({p})')
+
+        # Añadir columnas TOTAL
+        nuevas_cabeceras.append('TOTAL Justificadas y Injustificadas')
+        nuevas_cabeceras.append('TOTAL Retrasos')
+
+        cabeceras = nuevas_cabeceras
+
+        # Reorganizar datos de alumnos a nueva estructura
+        nuevos_alumnos = {}
+        for nombre, valores_antiguos in alumnos.items():
+            # Reorganizar de estructura antigua a nueva
+            # Antigua (1 período): [just1, inj1, ret1]
+            # Nueva (2 períodos): [just1, just2, inj1, inj2, ret1, ret2]
+
+            # Extraer valores por tipo del formato antiguo
+            justs = []
+            injs = []
+            rets = []
+
+            # Si hay 1 período previo, estructura antigua era [j, i, r]
+            if num_periodos_nuevo == 2:
+                justs = [valores_antiguos[0] if len(valores_antiguos) > 0 else ""]
+                injs = [valores_antiguos[1] if len(valores_antiguos) > 1 else ""]
+                rets = [valores_antiguos[2] if len(valores_antiguos) > 2 else ""]
+            else:
+                # Ya estaba en estructura correcta, extraer valores
+                for i in range(num_periodos - 1):
+                    justs.append(valores_antiguos[i] if i < len(valores_antiguos) else "")
+                for i in range(num_periodos - 1):
+                    idx = (num_periodos - 1) + i
+                    injs.append(valores_antiguos[idx] if idx < len(valores_antiguos) else "")
+                for i in range(num_periodos - 1):
+                    idx = 2 * (num_periodos - 1) + i
+                    rets.append(valores_antiguos[idx] if idx < len(valores_antiguos) else "")
+
+            # Añadir espacio para nuevo período
+            justs.append("")
+            injs.append("")
+            rets.append("")
+
+            # Construir nueva estructura: todas Just, todas Inj, todos Ret
+            valores_nuevos = justs + injs + rets
+            nuevos_alumnos[nombre] = valores_nuevos
+
+        alumnos = nuevos_alumnos
+
+        # Añadir datos del nuevo período
+        pos_just = num_periodos_nuevo - 1
+        pos_inj = num_periodos_nuevo + (num_periodos_nuevo - 1)
+        pos_ret = 2 * num_periodos_nuevo + (num_periodos_nuevo - 1)
+
+        for nombre, fj, fi, r in datos_nuevos:
+            if nombre in alumnos:
+                valores = list(alumnos[nombre])
+                valores[pos_just] = fj
+                valores[pos_inj] = fi
+                valores[pos_ret] = r
+                alumnos[nombre] = valores
+            else:
+                # Alumno nuevo
+                valores = [""] * (3 * num_periodos_nuevo)
+                valores[pos_just] = fj
+                valores[pos_inj] = fi
+                valores[pos_ret] = r
                 alumnos[nombre] = valores
 
     return {
@@ -351,15 +405,21 @@ def crear_ods(hojas_fusionadas, output_filename):
         cabeceras = hoja_data['cabeceras']
         alumnos = hoja_data['alumnos']
 
-        # Identificar columnas de Justificadas e Injustificadas para la fórmula TOTAL
+        # Identificar columnas de Justificadas, Injustificadas y Retrasos para las fórmulas TOTAL
         cols_justificadas = []
         cols_injustificadas = []
+        cols_retrasos = []
         for idx, header in enumerate(cabeceras):
             col_letter = chr(65 + idx)  # A=65 en ASCII (columna A es Alumno/a)
-            if 'Justificadas' in header:
+            if 'TOTAL' in header:
+                # Saltar columnas TOTAL
+                continue
+            elif 'Justificadas' in header:
                 cols_justificadas.append(col_letter)
             elif 'Injustificadas' in header:
                 cols_injustificadas.append(col_letter)
+            elif 'Retrasos' in header:
+                cols_retrasos.append(col_letter)
 
         # Añadir fila de cabecera
         header_row = SubElement(table, "{%s}table-row" % table_ns)
@@ -393,20 +453,36 @@ def crear_ods(hojas_fusionadas, output_filename):
                     p = SubElement(table_cell, "{%s}p" % text_ns)
                     p.text = str(cell_value)
 
-            # Añadir columna TOTAL con fórmula (suma todas las Justificadas + todas las Injustificadas)
-            total_cell = SubElement(table_row, "{%s}table-cell" % table_ns)
-            total_cell.set("{%s}value-type" % office_ns, "float")
+            # Añadir columna TOTAL Justificadas y Injustificadas
+            total_ji_cell = SubElement(table_row, "{%s}table-cell" % table_ns)
+            total_ji_cell.set("{%s}value-type" % office_ns, "float")
 
-            # Construir fórmula: suma de todas las columnas Justificadas e Injustificadas
-            formula_parts = []
+            # Construir fórmula: suma de todas las Just + todas las Inj
+            formula_ji_parts = []
             for col in cols_justificadas + cols_injustificadas:
-                formula_parts.append(f"[.{col}{row_num}]")
+                formula_ji_parts.append(f"[.{col}{row_num}]")
 
-            formula = f"of:={'+'.join(formula_parts)}" if formula_parts else "of:=0"
-            total_cell.set("{%s}formula" % table_ns, formula)
+            formula_ji = f"of:={'+'.join(formula_ji_parts)}" if formula_ji_parts else "of:=0"
+            total_ji_cell.set("{%s}formula" % table_ns, formula_ji)
 
             # No pre-calcular valor, la fórmula lo hará
-            p = SubElement(total_cell, "{%s}p" % text_ns)
+            p = SubElement(total_ji_cell, "{%s}p" % text_ns)
+            p.text = ""
+
+            # Añadir columna TOTAL Retrasos
+            total_r_cell = SubElement(table_row, "{%s}table-cell" % table_ns)
+            total_r_cell.set("{%s}value-type" % office_ns, "float")
+
+            # Construir fórmula: suma de todos los Retrasos
+            formula_r_parts = []
+            for col in cols_retrasos:
+                formula_r_parts.append(f"[.{col}{row_num}]")
+
+            formula_r = f"of:={'+'.join(formula_r_parts)}" if formula_r_parts else "of:=0"
+            total_r_cell.set("{%s}formula" % table_ns, formula_r)
+
+            # No pre-calcular valor, la fórmula lo hará
+            p = SubElement(total_r_cell, "{%s}p" % text_ns)
             p.text = ""
 
     # Convertir a string XML
